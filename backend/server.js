@@ -6,41 +6,45 @@ const fs = require('fs');
 const cors = require('cors');
 
 const app = express();
-const PORT = 3000;
+const PORT = 5000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Configuration DB (avec valeurs par défaut)
+// Configuration DB
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: '', // Laisse vide si pas de mot de passe
+    password: 'jupiter',  // ⬅️ REMPLACE PAR TON VRAI MOT DE PASSE
     database: 'jobmatchai'
 });
 
-// Gestion connexion DB avec reconnexion automatique
-function connectDB() {
-    db.connect((err) => {
-        if (err) {
-            console.log('⏳ Tentative de connexion à MySQL...');
-            setTimeout(connectDB, 2000);
-        } else {
-            console.log('✅ Connecté à MySQL');
-            initializeDatabase();
-        }
-    });
-}
+// Connexion à la base de données
+db.connect((err) => {
+    if (err) {
+        console.log('❌ Erreur MySQL:', err.message);
+        console.log('🔄 Utilisation des données simulées');
+    } else {
+        console.log('✅ Connecté à MySQL');
+        initializeDatabase();
+    }
+});
 
 function initializeDatabase() {
     // Créer la DB si elle n'existe pas
     db.query('CREATE DATABASE IF NOT EXISTS jobmatchai', (err) => {
-        if (err) throw err;
+        if (err) {
+            console.log('❌ Erreur création DB:', err.message);
+            return;
+        }
         
         db.changeUser({ database: 'jobmatchai' }, (err) => {
-            if (err) throw err;
+            if (err) {
+                console.log('❌ Erreur changement DB:', err.message);
+                return;
+            }
             createTables();
         });
     });
@@ -55,7 +59,7 @@ function createTables() {
             location VARCHAR(100),
             description TEXT,
             requirements TEXT,
-            skills_required JSON,
+            skills_required TEXT,
             salary_range VARCHAR(100),
             job_type VARCHAR(50),
             experience_level VARCHAR(50),
@@ -65,7 +69,10 @@ function createTables() {
     `;
 
     db.query(createTableSQL, (err) => {
-        if (err) throw err;
+        if (err) {
+            console.log('❌ Erreur création table:', err.message);
+            return;
+        }
         console.log('✅ Table job_offers créée');
         insertSampleData();
     });
@@ -74,7 +81,10 @@ function createTables() {
 function insertSampleData() {
     const checkSQL = 'SELECT COUNT(*) as count FROM job_offers';
     db.query(checkSQL, (err, results) => {
-        if (err) throw err;
+        if (err) {
+            console.log('❌ Erreur vérification données:', err.message);
+            return;
+        }
         
         if (results[0].count === 0) {
             console.log('📝 Insertion des offres exemple...');
@@ -84,9 +94,9 @@ function insertSampleData() {
                     title: "Développeur Fullstack JavaScript",
                     company: "TechCorp",
                     location: "Paris",
-                    description: "Nous recherchons un développeur fullstack passionné pour rejoindre notre équipe technique. Vous travaillerez sur des projets innovants avec les dernières technologies.",
+                    description: "Nous recherchons un développeur fullstack passionné pour rejoindre notre équipe technique. Vous travaillerez sur des projets innovants avec les dernières technologies web.",
                     requirements: "Minimum 2 ans d'expérience en développement web, maîtrise de JavaScript et React",
-                    skills_required: JSON.stringify(["javascript", "react", "node.js", "mongodb", "html", "css"]),
+                    skills_required: "javascript,react,node.js,mongodb,html,css",
                     salary_range: "45k-55k €",
                     job_type: "CDI",
                     experience_level: "Mid-level"
@@ -97,7 +107,7 @@ function insertSampleData() {
                     location: "Lyon", 
                     description: "Rejoignez notre équipe data science pour développer des modèles prédictifs innovants. Analyse de données et machine learning au quotidien.",
                     requirements: "Master en data science, expérience avec Python et machine learning",
-                    skills_required: JSON.stringify(["python", "machine learning", "sql", "pandas", "numpy", "tensorflow"]),
+                    skills_required: "python,machine learning,sql,pandas,numpy,tensorflow",
                     salary_range: "50k-60k €",
                     job_type: "CDI",
                     experience_level: "Senior"
@@ -108,30 +118,8 @@ function insertSampleData() {
                     location: "Remote",
                     description: "Gestion de notre infrastructure cloud et automatisation des déploiements. Environnement technique stimulant.",
                     requirements: "Expérience avec AWS, Docker et Kubernetes, connaissance de Linux",
-                    skills_required: JSON.stringify(["docker", "kubernetes", "aws", "linux", "python", "bash"]),
+                    skills_required: "docker,kubernetes,aws,linux,python,bash",
                     salary_range: "48k-58k €",
-                    job_type: "CDI",
-                    experience_level: "Mid-level"
-                },
-                {
-                    title: "Développeur Mobile Flutter",
-                    company: "AppFactory",
-                    location: "Toulouse",
-                    description: "Développement d'applications mobiles cross-platform avec Flutter. Rejoignez une équipe jeune et dynamique.",
-                    requirements: "Expérience avec Flutter ou framework mobile, portfolio apprécié",
-                    skills_required: JSON.stringify(["flutter", "dart", "android", "ios", "firebase"]),
-                    salary_range: "40k-50k €",
-                    job_type: "CDI",
-                    experience_level: "Junior"
-                },
-                {
-                    title: "Frontend Developer React",
-                    company: "WebAgency",
-                    location: "Bordeaux",
-                    description: "Création d'interfaces utilisateur modernes et responsives. Travail sur des projets variés pour différents clients.",
-                    requirements: "Bonnes connaissances en React, TypeScript et CSS moderne",
-                    skills_required: JSON.stringify(["react", "typescript", "html", "css", "redux", "jest"]),
-                    salary_range: "42k-52k €",
                     job_type: "CDI",
                     experience_level: "Mid-level"
                 }
@@ -142,15 +130,20 @@ function insertSampleData() {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
-            sampleJobs.forEach((job, index) => {
+            let inserted = 0;
+            sampleJobs.forEach((job) => {
                 db.query(insertSQL, [
                     job.title, job.company, job.location, job.description, 
                     job.requirements, job.skills_required, job.salary_range, 
                     job.job_type, job.experience_level
                 ], (err) => {
-                    if (err) throw err;
-                    if (index === sampleJobs.length - 1) {
-                        console.log(`✅ ${sampleJobs.length} offres d'emploi insérées`);
+                    if (err) {
+                        console.log('❌ Erreur insertion:', err.message);
+                    } else {
+                        inserted++;
+                        if (inserted === sampleJobs.length) {
+                            console.log(`✅ ${inserted} offres insérées dans MySQL`);
+                        }
                     }
                 });
             });
@@ -182,6 +175,9 @@ const upload = multer({
         } else {
             cb(new Error('Seuls les fichiers PDF sont acceptés'), false);
         }
+    },
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB
     }
 });
 
@@ -190,27 +186,91 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-// 📄 ROUTE 2: Obtenir toutes les offres d'emploi
+// 📄 ROUTE 2: Santé du serveur
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        message: 'JobMatchAI backend opérationnel',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// 📄 ROUTE 3: Obtenir toutes les offres d'emploi (CORRIGÉE)
 app.get('/api/jobs', (req, res) => {
     const sql = 'SELECT * FROM job_offers WHERE is_active = TRUE ORDER BY created_at DESC';
     
     db.query(sql, (err, results) => {
         if (err) {
-            console.error('❌ Erreur DB:', err);
-            return res.status(500).json({ error: 'Erreur base de données' });
+            console.log('❌ Erreur DB:', err.message);
+            return res.json(getSimulatedJobs());
         }
         
-        // Convertir les skills JSON en objet
-        const jobs = results.map(job => ({
-            ...job,
-            skills_required: JSON.parse(job.skills_required)
-        }));
+        // CORRECTION: Gestion sécurisée des skills
+        const jobs = results.map(job => {
+            let skills = [];
+            
+            if (job.skills_required) {
+                // Convertir en chaîne si c'est un Buffer
+                let skillsString = job.skills_required;
+                if (Buffer.isBuffer(skillsString)) {
+                    skillsString = skillsString.toString();
+                }
+                
+                // S'assurer que c'est une chaîne
+                if (typeof skillsString === 'string') {
+                    skills = skillsString.split(',').map(s => s.trim());
+                }
+            }
+            
+            return {
+                id: job.id,
+                title: job.title,
+                company: job.company,
+                location: job.location,
+                description: job.description,
+                requirements: job.requirements,
+                skills_required: skills,
+                salary_range: job.salary_range,
+                job_type: job.job_type,
+                experience_level: job.experience_level,
+                created_at: job.created_at,
+                is_active: job.is_active
+            };
+        });
         
+        console.log('📊 Envoi de', jobs.length, 'offres');
         res.json(jobs);
     });
 });
 
-// 📄 ROUTE 3: Upload et analyse de CV
+function getSimulatedJobs() {
+    return [
+        {
+            id: 1,
+            title: "Développeur Fullstack JavaScript",
+            company: "TechCorp",
+            location: "Paris",
+            description: "Données simulées - Développement fullstack",
+            skills_required: ["javascript", "react", "node.js"],
+            salary_range: "45k-55k €",
+            job_type: "CDI",
+            experience_level: "Mid-level"
+        },
+        {
+            id: 2,
+            title: "Data Scientist Python",
+            company: "DataCompany",
+            location: "Lyon",
+            description: "Données simulées - Data Science",
+            skills_required: ["python", "machine learning", "sql"],
+            salary_range: "50k-60k €",
+            job_type: "CDI", 
+            experience_level: "Senior"
+        }
+    ];
+}
+
+// 📄 ROUTE 4: Upload et analyse de CV
 app.post('/api/analyze-cv', upload.single('cv'), async (req, res) => {
     try {
         if (!req.file) {
@@ -219,32 +279,68 @@ app.post('/api/analyze-cv', upload.single('cv'), async (req, res) => {
 
         console.log('📄 CV reçu:', req.file.filename);
 
-        // Pour la démo, on simule l'extraction de texte
-        // Dans la vraie version, tu utiliserais pdf-parse
+        // Simulation de l'analyse de CV
         const simulatedCVText = `
-            DÉVELOPPEUR FULLSTACK
-            Expérience: 3 ans
-            Compétences: JavaScript, React, Node.js, MongoDB, HTML, CSS, Python
-            Projets: Développement d'applications web, APIs REST, bases de données
-            Formation: Master en informatique
-            Langues: Français, Anglais
+            DÉVELOPPEUR FULLSTACK - AMADOU SOW
+            ===================================
+            
+            EXPÉRIENCE PROFESSIONNELLE:
+            - Développeur Fullstack - 3 ans
+            - Création d'applications web avec JavaScript, React, Node.js
+            - Développement d'APIs REST avec Express.js
+            - Gestion de bases de données MongoDB et MySQL
+            
+            COMPÉTENCES TECHNIQUES:
+            • Langages: JavaScript, Python, Java, HTML5, CSS3
+            • Frameworks: React, Node.js, Express, Spring Boot
+            • Bases de données: MongoDB, MySQL, PostgreSQL
+            • Outils: Git, Docker, AWS, Linux, REST APIs
+            
+            FORMATION:
+            - Master en Informatique
+            - Licence en Développement Web
         `;
 
         const userSkills = analyzeCVSkills(simulatedCVText);
         console.log('🔍 Compétences détectées:', Object.keys(userSkills));
         
-        const matchingJobs = await findMatchingJobs(userSkills);
-        
-        res.json({
-            success: true,
-            userSkills: userSkills,
-            matchingJobs: matchingJobs,
-            totalMatches: matchingJobs.length
+        // Récupérer les jobs pour le matching
+        const sql = 'SELECT * FROM job_offers WHERE is_active = TRUE';
+        db.query(sql, (err, allJobs) => {
+            if (err || !allJobs || allJobs.length === 0) {
+                const matchingJobs = findMatchingJobs(getSimulatedJobs(), userSkills);
+                return sendResponse(res, userSkills, matchingJobs);
+            }
+
+            // Convertir les skills en tableau
+            const jobsWithSkills = allJobs.map(job => {
+                let skills = [];
+                if (job.skills_required) {
+                    let skillsString = job.skills_required;
+                    if (Buffer.isBuffer(skillsString)) {
+                        skillsString = skillsString.toString();
+                    }
+                    if (typeof skillsString === 'string') {
+                        skills = skillsString.split(',').map(s => s.trim());
+                    }
+                }
+                
+                return {
+                    ...job,
+                    skills_required: skills
+                };
+            });
+            
+            const matchingJobs = findMatchingJobs(jobsWithSkills, userSkills);
+            sendResponse(res, userSkills, matchingJobs);
         });
 
     } catch (error) {
         console.error('❌ Erreur analyse CV:', error);
-        res.status(500).json({ error: 'Erreur lors de l\'analyse du CV: ' + error.message });
+        res.status(500).json({ 
+            success: false,
+            error: 'Erreur lors de l\'analyse du CV' 
+        });
     }
 });
 
@@ -253,7 +349,7 @@ function analyzeCVSkills(cvText) {
     const skillsKeywords = {
         'javascript': ['javascript', 'js'],
         'react': ['react', 'react.js'],
-        'node.js': ['node', 'node.js'],
+        'node.js': ['node', 'node.js', 'express'],
         'python': ['python'],
         'java': ['java'],
         'sql': ['sql', 'mysql'],
@@ -275,7 +371,7 @@ function analyzeCVSkills(cvText) {
     Object.keys(skillsKeywords).forEach(skill => {
         skillsKeywords[skill].forEach(keyword => {
             if (textLower.includes(keyword)) {
-                foundSkills[skill] = 0.8; // Score de confiance
+                foundSkills[skill] = 0.8;
             }
         });
     });
@@ -284,54 +380,50 @@ function analyzeCVSkills(cvText) {
 }
 
 // Fonction de matching des offres
-function findMatchingJobs(userSkills) {
-    return new Promise((resolve, reject) => {
-        const sql = 'SELECT * FROM job_offers WHERE is_active = TRUE';
+function findMatchingJobs(allJobs, userSkills) {
+    const userSkillNames = Object.keys(userSkills);
+    
+    const matchingJobs = allJobs.map(job => {
+        const commonSkills = job.skills_required.filter(skill => 
+            userSkillNames.includes(skill)
+        );
         
-        db.query(sql, (err, allJobs) => {
-            if (err) {
-                reject(err);
-                return;
-            }
+        const matchScore = commonSkills.length > 0 ? Math.round((commonSkills.length / job.skills_required.length) * 100) : 0;
+        
+        return {
+            ...job,
+            matchScore: matchScore,
+            matchingSkills: commonSkills
+        };
+    }).filter(job => job.matchScore >= 30)
+      .sort((a, b) => b.matchScore - a.matchScore);
 
-            const userSkillNames = Object.keys(userSkills);
-            const matchingJobs = allJobs.map(job => {
-                const jobSkills = JSON.parse(job.skills_required);
-                const commonSkills = jobSkills.filter(skill => 
-                    userSkillNames.includes(skill)
-                );
-                
-                // Calcul du score de matching
-                const matchScore = Math.round((commonSkills.length / jobSkills.length) * 100);
-                
-                return {
-                    ...job,
-                    skills_required: jobSkills,
-                    matchScore: matchScore,
-                    matchingSkills: commonSkills
-                };
-            }).filter(job => job.matchScore > 0) // Garder seulement ceux avec au moins 1 match
-              .sort((a, b) => b.matchScore - a.matchScore); // Trier par score
+    console.log('🎯', matchingJobs.length, 'offres correspondantes');
+    return matchingJobs;
+}
 
-            resolve(matchingJobs);
-        });
+function sendResponse(res, userSkills, matchingJobs) {
+    res.json({
+        success: true,
+        userSkills: userSkills,
+        matchingJobs: matchingJobs,
+        totalMatches: matchingJobs.length,
+        message: `Analyse terminée! ${matchingJobs.length} offres correspondent à votre profil.`
     });
 }
 
-// Gestion des erreurs de connexion DB
-db.on('error', (err) => {
-    console.log('❌ Erreur DB:', err);
-    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        connectDB();
-    } else {
-        throw err;
-    }
+// Gestion des erreurs 404
+app.use((req, res) => {
+    res.status(404).json({ error: 'Route non trouvée' });
 });
 
-// Démarrer le serveur
-app.listen(PORT, () => {
-    console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
-    console.log(`📊 API Jobs: http://localhost:${PORT}/api/jobs`);
-    console.log(`📄 Upload CV: POST http://localhost:${PORT}/api/analyze-cv`);
-    connectDB();
+// DÉMARRAGE CRITIQUE - Écouter sur toutes les interfaces
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Serveur JobMatchAI démarré sur http://0.0.0.0:${PORT}`);
+    console.log(`💻 Test local: http://localhost:${PORT}`);
+    console.log(`🌐 Accès externe: http://192.168.40.131:${PORT}`);
+    console.log(`📊 API Health: http://localhost:${PORT}/api/health`);
+    console.log(`📄 API Jobs: http://localhost:${PORT}/api/jobs`);
+    console.log('');
+    console.log('✅ Prêt à recevoir des requêtes!');
 });
